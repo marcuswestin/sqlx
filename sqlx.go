@@ -313,6 +313,42 @@ func (db *DB) GetMaybe(dest interface{}, query string, args ...interface{}) (fou
 	return GetMaybe(db, dest, query, args...)
 }
 
+type TxFunc func(tx *Tx) error
+
+func (db *DB) Transact(txFun TxFunc) error {
+	conn, err := db.Beginx()
+	if err != nil {
+		return errs.Wrap(err, errs.Info{"Description": "Could not open transaction"})
+	}
+	defer func() {
+		if panicErr := recover(); panicErr != nil {
+			info := errs.Info{"Description": "Panic during sql transcation", "PanicErr": panicErr}
+			if rbErr := conn.Rollback(); rbErr != nil {
+				info["RollbackErr"] = rbErr
+			}
+			panic(errs.New(info))
+		}
+	}()
+
+	err = txFun(&Shard{s.DBName, nil, conn})
+	if err != nil {
+		err = errs.Wrap(err, nil)
+		if rbErr := conn.Rollback(); rbErr != nil {
+			return errs.Wrap(err, errs.Info{"Description": "Transact rollback error", "TransactionError": err})
+		} else {
+			return err
+		}
+
+	} else {
+		err = conn.Commit()
+		if err != nil {
+			return errs.Wrap(err, errs.Info{"Description": "Could not commit transaction"})
+		}
+	}
+
+	return nil
+}
+
 // MustBegin starts a transaction, and panics on error.  Returns an *sqlx.Tx instead
 // of an *sql.Tx.
 func (db *DB) MustBegin() *Tx {
