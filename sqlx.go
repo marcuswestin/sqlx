@@ -191,7 +191,7 @@ func (r *Row) Scan(dest ...interface{}) error {
 	defer r.rows.Close()
 	for _, dp := range dest {
 		if _, ok := dp.(*sql.RawBytes); ok {
-			return errs.New("sql: RawBytes isn't allowed on Row.Scan")
+			return errs.New(nil, "sql: RawBytes isn't allowed on Row.Scan")
 		}
 	}
 
@@ -316,31 +316,31 @@ func (db *DB) GetMaybe(dest interface{}, query string, args ...interface{}) (fou
 type TxFunc func(tx *Tx) error
 
 func (db *DB) Transact(txFun TxFunc) error {
-	conn, err := db.Beginx()
+	tx, err := db.Beginx()
 	if err != nil {
 		return errs.Wrap(err, errs.Info{"Description": "Could not open transaction"})
 	}
 	defer func() {
 		if panicErr := recover(); panicErr != nil {
 			info := errs.Info{"Description": "Panic during sql transcation", "PanicErr": panicErr}
-			if rbErr := conn.Rollback(); rbErr != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
 				info["RollbackErr"] = rbErr
 			}
 			panic(errs.New(info))
 		}
 	}()
 
-	err = txFun(&Shard{s.DBName, nil, conn})
+	err = txFun(tx)
 	if err != nil {
 		err = errs.Wrap(err, nil)
-		if rbErr := conn.Rollback(); rbErr != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
 			return errs.Wrap(err, errs.Info{"Description": "Transact rollback error", "TransactionError": err})
 		} else {
 			return err
 		}
 
 	} else {
-		err = conn.Commit()
+		err = tx.Commit()
 		if err != nil {
 			return errs.Wrap(err, errs.Info{"Description": "Could not commit transaction"})
 		}
@@ -612,7 +612,7 @@ func (r *Rows) StructScan(dest interface{}) error {
 	v := reflect.ValueOf(dest)
 
 	if v.Kind() != reflect.Ptr {
-		return errs.New("must pass a pointer, not a value, to StructScan destination")
+		return errs.New(nil, "must pass a pointer, not a value, to StructScan destination")
 	}
 
 	v = reflect.Indirect(v)
@@ -761,10 +761,10 @@ func (r *Row) scanAny(dest interface{}, structOnly bool) error {
 
 	v := reflect.ValueOf(dest)
 	if v.Kind() != reflect.Ptr {
-		return errs.New("must pass a pointer, not a value, to StructScan destination")
+		return errs.New(nil, "must pass a pointer, not a value, to StructScan destination")
 	}
 	if v.IsNil() {
-		return errs.New("nil pointer passed to StructScan destination")
+		return errs.New(nil, "nil pointer passed to StructScan destination")
 	}
 
 	base := reflectx.Deref(v.Type())
@@ -914,10 +914,10 @@ func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 
 	// json.Unmarshal returns errors for these
 	if value.Kind() != reflect.Ptr {
-		return errs.New("must pass a pointer, not a value, to StructScan destination")
+		return errs.New(nil, "must pass a pointer, not a value, to StructScan destination")
 	}
 	if value.IsNil() {
-		return errs.New("nil pointer passed to StructScan destination")
+		return errs.New(nil, "nil pointer passed to StructScan destination")
 	}
 	direct := reflect.Indirect(value)
 
@@ -1030,7 +1030,7 @@ func baseType(t reflect.Type, expected reflect.Kind) (reflect.Type, error) {
 func fieldsByTraversal(v reflect.Value, traversals [][]int, values []interface{}, ptrs bool) error {
 	v = reflect.Indirect(v)
 	if v.Kind() != reflect.Struct {
-		return errs.New("argument not a struct")
+		return errs.New(nil, "argument not a struct")
 	}
 
 	for i, traversal := range traversals {
@@ -1051,7 +1051,7 @@ func fieldsByTraversal(v reflect.Value, traversals [][]int, values []interface{}
 func missingFields(transversals [][]int) (field int, err error) {
 	for i, t := range transversals {
 		if len(t) == 0 {
-			return i, errs.New("missing field")
+			return i, errs.New(nil, "missing field")
 		}
 	}
 	return 0, nil
