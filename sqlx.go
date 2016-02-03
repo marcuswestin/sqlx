@@ -308,6 +308,11 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 	return Get(db, dest, query, args...)
 }
 
+// GetMaybe using this DB.
+func (db *DB) GetMaybe(dest interface{}, query string, args ...interface{}) (found bool, err error) {
+	return GetMaybe(db, dest, query, args...)
+}
+
 // MustBegin starts a transaction, and panics on error.  Returns an *sqlx.Tx instead
 // of an *sql.Tx.
 func (db *DB) MustBegin() *Tx {
@@ -421,6 +426,11 @@ func (tx *Tx) Get(dest interface{}, query string, args ...interface{}) error {
 	return Get(tx, dest, query, args...)
 }
 
+// GetMaybe within a transaction.
+func (tx *Tx) GetMaybe(dest interface{}, query string, args ...interface{}) (found bool, err error) {
+	return GetMaybe(tx, dest, query, args...)
+}
+
 // MustExec runs MustExec within a transaction.
 func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 	return MustExec(tx, query, args...)
@@ -485,6 +495,11 @@ func (s *Stmt) Select(dest interface{}, args ...interface{}) error {
 // Get using the prepared statement.
 func (s *Stmt) Get(dest interface{}, args ...interface{}) error {
 	return Get(&qStmt{s}, dest, "", args...)
+}
+
+// GetMaybe using the prepared statement.
+func (s *Stmt) GetMaybe(dest interface{}, args ...interface{}) (found bool, err error) {
+	return GetMaybe(&qStmt{s}, dest, "", args...)
 }
 
 // MustExec (panic) using this statement.  Note that the query portion of the error
@@ -642,6 +657,21 @@ func Select(q Queryer, dest interface{}, query string, args ...interface{}) erro
 func Get(q Queryer, dest interface{}, query string, args ...interface{}) error {
 	r := q.QueryRowx(query, args...)
 	return r.scanAny(dest, false)
+}
+
+// Get does a QueryRow using the provided Queryer, and scans the resulting row
+// to dest.  If dest is scannable, the result must only have one column.  Otherwise,
+// StructScan is used.  Get will return sql.ErrNoRows like row.Scan would.
+func GetMaybe(q Queryer, dest interface{}, query string, args ...interface{}) (found bool, err error) {
+	r := q.QueryRowx(query, args...)
+	err = r.scanAny(dest, false)
+	if err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	} else {
+		return true, nil
+	}
 }
 
 // LoadFile exec's every statement in a file (as a single call to Exec).
