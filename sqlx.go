@@ -313,6 +313,13 @@ func (db *DB) GetMaybe(dest interface{}, query string, args ...interface{}) (fou
 	return GetMaybe(db, dest, query, args...)
 }
 
+func (db *DB) InsertIgnoreId(query string, args ...interface{}) error {
+	return InsertIgnoreId(db, query, args...)
+}
+func (db *DB) InsertAutoIncrement(query string, args ...interface{}) (int64, error) {
+	return InsertAutoIncrement(db, query, args...)
+}
+
 type TxFunc func(tx *Tx) error
 
 func (db *DB) Transact(txFun TxFunc) error {
@@ -710,6 +717,32 @@ func GetMaybe(q Queryer, dest interface{}, query string, args ...interface{}) (f
 	}
 }
 
+func InsertAutoIncrement(e Execer, query string, args ...interface{}) (int64, error) {
+	res, err := e.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, errs.Wrap(err, errInfo("Insert LastInsertIderror", query, args))
+	}
+	return id, nil
+}
+
+func InsertIgnoreDuplicate(e Execer, query string, args ...interface{}) error {
+	err := InsertIgnoreId(e, query, args...)
+	if err != nil && IsDuplicateEntryError(err) {
+		err = nil
+	}
+	return err
+}
+
+func InsertIgnoreId(e Execer, query string, args ...interface{}) error {
+	_, err := InsertAutoIncrement(e, query, args...)
+	return err
+}
+
 // LoadFile exec's every statement in a file (as a single call to Exec).
 // LoadFile may return a nil *sql.Result if errors are encountered locating or
 // reading the file at path.  LoadFile reads the entire file into memory, so it
@@ -1069,4 +1102,19 @@ func missingFields(transversals [][]int) (field int, err error) {
 		}
 	}
 	return 0, nil
+}
+
+func errInfo(description, query string, args []interface{}, infos ...errs.Info) errs.Info {
+	info := errs.Info{"Description": description, "Query": query, "Args": args}
+	for _, moreInfo := range infos {
+		for key, val := range moreInfo {
+			info[key] = val
+		}
+	}
+	return info
+}
+
+func IsDuplicateEntryError(err error) bool {
+	str := err.Error()
+	return strings.Contains(str, "Duplicate entry")
 }
