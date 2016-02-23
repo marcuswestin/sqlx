@@ -627,7 +627,7 @@ func (r *Rows) StructScan(dest interface{}) error {
 		r.fields = m.TraversalsByName(v.Type(), columns)
 		// if we are not unsafe and are missing fields, return an error
 		if f, err := missingFields(r.fields); err != nil && !r.unsafe {
-			return fmt.Errorf("missing destination name %s", columns[f])
+			return errs.Format(nil, "missing destination name %s", columns[f])
 		}
 		r.values = make([]interface{}, len(columns))
 		r.started = true
@@ -700,11 +700,11 @@ func Get(q Queryer, dest interface{}, query string, args ...interface{}) error {
 // StructScan is used.  Get will return sql.ErrNoRows like row.Scan would.
 func GetMaybe(q Queryer, dest interface{}, query string, args ...interface{}) (found bool, err error) {
 	r := q.QueryRowx(query, args...)
-	err = r.scanAny(dest, false)
-	if err == sql.ErrNoRows {
+	e := r.scanAny(dest, false)
+	if e.WrappedError() == sql.ErrNoRows {
 		return false, nil
-	} else if err != nil {
-		return false, err
+	} else if e != nil {
+		return false, e
 	} else {
 		return true, nil
 	}
@@ -753,7 +753,14 @@ func (r *Row) MapScan(dest map[string]interface{}) error {
 	return MapScan(r, dest)
 }
 
-func (r *Row) scanAny(dest interface{}, structOnly bool) error {
+func (r *Row) scanAny(dest interface{}, structOnly bool) errs.Err {
+	err := r._scanAny(dest, structOnly)
+	if err != nil {
+		return errs.Wrap(err, nil)
+	}
+	return nil
+}
+func (r *Row) _scanAny(dest interface{}, structOnly bool) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -780,7 +787,7 @@ func (r *Row) scanAny(dest interface{}, structOnly bool) error {
 	}
 
 	if scannable && len(columns) > 1 {
-		return fmt.Errorf("scannable dest type %s with >1 columns (%d) in result", base.Kind(), len(columns))
+		return errs.Format(nil, "scannable dest type %s with >1 columns (%d) in result", base.Kind(), len(columns))
 	}
 
 	if scannable {
@@ -792,7 +799,7 @@ func (r *Row) scanAny(dest interface{}, structOnly bool) error {
 	fields := m.TraversalsByName(v.Type(), columns)
 	// if we are not unsafe and are missing fields, return an error
 	if f, err := missingFields(fields); err != nil && !r.unsafe {
-		return fmt.Errorf("missing destination name %s", columns[f])
+		return errs.Format(nil, "missing destination name %s", columns[f])
 	}
 	values := make([]interface{}, len(columns))
 
@@ -884,12 +891,12 @@ func structOnlyError(t reflect.Type) error {
 	isStruct := t.Kind() == reflect.Struct
 	isScanner := reflect.PtrTo(t).Implements(_scannerInterface)
 	if !isStruct {
-		return fmt.Errorf("expected %s but got %s", reflect.Struct, t.Kind())
+		return errs.Format(nil, "expected %s but got %s", reflect.Struct, t.Kind())
 	}
 	if isScanner {
-		return fmt.Errorf("structscan expects a struct dest but the provided struct type %s implements scanner", t.Name())
+		return errs.Format(nil, "structscan expects a struct dest but the provided struct type %s implements scanner", t.Name())
 	}
-	return fmt.Errorf("expected a struct, but struct %s has no exported fields", t.Name())
+	return errs.Format(nil, "expected a struct, but struct %s has no exported fields", t.Name())
 }
 
 // scanAll scans all rows into a destination, which must be a slice of any
@@ -908,6 +915,13 @@ func structOnlyError(t reflect.Type) error {
 // this is the only way to not duplicate reflect work in the new API while
 // maintaining backwards compatibility.
 func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
+	err := _scanAll(rows, dest, structOnly)
+	if err != nil {
+		return errs.Wrap(err, nil)
+	}
+	return nil
+}
+func _scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 	var v, vp reflect.Value
 
 	value := reflect.ValueOf(dest)
@@ -941,7 +955,7 @@ func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 
 	// if it's a base type make sure it only has 1 column;  if not return an error
 	if scannable && len(columns) > 1 {
-		return fmt.Errorf("non-struct dest type %s with >1 columns (%d)", base.Kind(), len(columns))
+		return errs.Format(nil, "non-struct dest type %s with >1 columns (%d)", base.Kind(), len(columns))
 	}
 
 	if !scannable {
@@ -958,7 +972,7 @@ func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 		fields := m.TraversalsByName(base, columns)
 		// if we are not unsafe and are missing fields, return an error
 		if f, err := missingFields(fields); err != nil && !isUnsafe(rows) {
-			return fmt.Errorf("missing destination name %s", columns[f])
+			return errs.Format(nil, "missing destination name %s", columns[f])
 		}
 		values = make([]interface{}, len(columns))
 
@@ -1016,7 +1030,7 @@ func StructScan(rows rowsi, dest interface{}) error {
 func baseType(t reflect.Type, expected reflect.Kind) (reflect.Type, error) {
 	t = reflectx.Deref(t)
 	if t.Kind() != expected {
-		return nil, fmt.Errorf("expected %s but got %s", expected, t.Kind())
+		return nil, errs.Format(nil, "expected %s but got %s", expected, t.Kind())
 	}
 	return t, nil
 }
