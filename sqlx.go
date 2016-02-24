@@ -484,6 +484,13 @@ func (tx *Tx) Preparex(query string) (*Stmt, error) {
 	return Preparex(tx, query)
 }
 
+func (tx *Tx) UpdateOne(query string, args ...interface{}) error {
+	return UpdateOne(tx, query, args...)
+}
+func (tx *Tx) InsertIgnoreId(query string, args ...interface{}) error {
+	return InsertIgnoreId(tx, query, args...)
+}
+
 // Stmtx returns a version of the prepared statement which runs within a transaction.  Provided
 // stmt can be either *sql.Stmt or *sqlx.Stmt.
 func (tx *Tx) Stmtx(stmt interface{}) *Stmt {
@@ -741,6 +748,21 @@ func InsertIgnoreDuplicate(e Execer, query string, args ...interface{}) error {
 func InsertIgnoreId(e Execer, query string, args ...interface{}) error {
 	_, err := InsertAutoIncrement(e, query, args...)
 	return err
+}
+
+func UpdateOne(e Execer, query string, args ...interface{}) error {
+	res, err := e.Exec(query, args...)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected != 1 {
+		return errs.New(nil, "UpdateOne affected", rowsAffected, "rows")
+	}
+	return nil
 }
 
 // LoadFile exec's every statement in a file (as a single call to Exec).
