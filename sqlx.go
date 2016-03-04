@@ -715,7 +715,7 @@ func Get(q Queryer, dest interface{}, query string, args ...interface{}) error {
 func GetMaybe(q Queryer, dest interface{}, query string, args ...interface{}) (found bool, err error) {
 	r := q.QueryRowx(query, args...)
 	e := r.scanAny(dest, false)
-	if e.WrappedError() == sql.ErrNoRows {
+	if e != nil && e.WrappedError() == sql.ErrNoRows {
 		return false, nil
 	} else if e != nil {
 		return false, e
